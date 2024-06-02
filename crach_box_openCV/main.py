@@ -12,7 +12,7 @@ def main():
 
     imgBackground = cv2.imread("Resources/Background.png")
     imgBall = cv2.imread("Resources/Ball.png", cv2.IMREAD_UNCHANGED)
-    imgBoard = cv2.imread("Resources/board.png", cv2.IMREAD_UNCHANGED)
+    imgPaddle = cv2.imread("Resources/Paddle.png", cv2.IMREAD_UNCHANGED)
     imgBox = cv2.imread("Resources/Box.png", cv2.IMREAD_UNCHANGED)
     imgItem = cv2.imread("Resources/x2.png", cv2.IMREAD_UNCHANGED)
     imgStart = cv2.imread("Resources/StartScreen.png")
@@ -140,24 +140,24 @@ def main():
         if hands:
             for hand in hands:
                 x, y, w, h = hand['bbox']
-                h_board, w_board, _ = imgBoard.shape
-                y_board = y - h_board // 2
-                y_board = np.clip(y_board, 10, 405)
+                h_Paddle, w_Paddle, _ = imgPaddle.shape
+                y_Paddle = y - h_Paddle // 2
+                y_Paddle = np.clip(y_Paddle, 10, 405)
 
-                board_rect = [20, y_board, w_board, h_board]
+                Paddle_rect = [20, y_Paddle, w_Paddle, h_Paddle]
 
                 ball_rect = [ballPos[0], ballPos[1], imgBall.shape[1], imgBall.shape[0]]
 
-                if (ball_rect[1] < board_rect[1] + board_rect[3] and ball_rect[1] + ball_rect[3] > board_rect[1]):
-                    if ball_rect[0] < board_rect[0] + board_rect[2] and ball_rect[0] + ball_rect[2] > board_rect[0]:
-                        hit_position = (ball_rect[1] + ball_rect[3] / 2) - board_rect[1]
-                        normalized_hit_position = (hit_position / board_rect[3]) - 0.5
+                if (ball_rect[1] < Paddle_rect[1] + Paddle_rect[3] and ball_rect[1] + ball_rect[3] > Paddle_rect[1]):
+                    if ball_rect[0] < Paddle_rect[0] + Paddle_rect[2] and ball_rect[0] + ball_rect[2] > Paddle_rect[0]:
+                        hit_position = (ball_rect[1] + ball_rect[3] / 2) - Paddle_rect[1]
+                        normalized_hit_position = (hit_position / Paddle_rect[3]) - 0.5
                         direction[1] = direction[1] + normalized_hit_position * 2
                         direction[0] = -direction[0]
                         direction = maintain_speed(direction, speed)
 
                 if (hand['type'] == "Left") or (hand['type'] == "Right"):
-                    img = cvzone.overlayPNG(img, imgBoard, (20, y_board))
+                    img = cvzone.overlayPNG(img, imgPaddle, (20, y_Paddle))
 
         if ballPos[1] >= 470 or ballPos[1] <= 0:
             direction[1] = -direction[1]
@@ -213,7 +213,7 @@ def main():
 
         cv2.imshow("Image", img)
         
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == 27:
             break
 
     cap.release()
