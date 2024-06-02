@@ -43,11 +43,13 @@ Ensure the following images are present in the Resources directory:
 1. If you run, this start screen will appear. Press SPACE to start the game
     ![main](https://github.com/ywoolee/Crash_Box_openCV/assets/68912105/068fb70e-407e-4ecd-a148-bfa809421a49)
 2. If you move the paddle on the left side of the game screen up and down using either your right or left hand and hit the ball to break the box, the score will increase
-   2-1. The item is X2, but if you eat it, your score will be twice as high as your score in a certain period of time
-   2-2. If the ball hits the left wall, the game ends
+
+    2-1. The item is X2, but if you eat it, your score will be twice as high as your score in a certain period of time
+
+    2-2. If the ball hits the left wall, the game ends
     **If you use more than two hands, the paddle moves based on the recognized hand
     ![hand_detect](https://github.com/ywoolee/Crash_Box_openCV/assets/68912105/40f0afaf-18ea-4643-8f57-be921cf04d5e)
-3. If you press R on the end screen, you'll go back to the start screen
+4. If you press R on the end screen, you'll go back to the start screen
 ![end](https://github.com/ywoolee/Crash_Box_openCV/assets/68912105/eb6d0529-f4ad-46c7-81c9-7a294d07d0b8)
 
     **If you want to exit, press ESC to exit
