@@ -1,114 +1,9 @@
 import cv2
 import cvzone
+from cvzone.HandTrackingModule import HandDetector
 import numpy as np
 import random
-import math
-import mediapipe as mp
-
-
-class HandDetector:
-    def __init__(self, staticMode=False, maxHands=2, modelComplexity=1, detectionCon=0.5, minTrackCon=0.5):
-
-        self.staticMode = staticMode
-        self.maxHands = maxHands
-        self.modelComplexity = modelComplexity
-        self.detectionCon = detectionCon
-        self.minTrackCon = minTrackCon
-        self.mpHands = mp.solutions.hands
-        self.hands = self.mpHands.Hands(static_image_mode=self.staticMode,
-                                        max_num_hands=self.maxHands,
-                                        model_complexity=modelComplexity,
-                                        min_detection_confidence=self.detectionCon,
-                                        min_tracking_confidence=self.minTrackCon)
-
-        self.mpDraw = mp.solutions.drawing_utils
-        self.tipIds = [4, 8, 12, 16, 20]
-        self.fingers = []
-        self.lmList = []
-
-    def findHands(self, img, draw=True, flipType=True):
-        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        self.results = self.hands.process(imgRGB)
-        allHands = []
-        h, w, c = img.shape
-        if self.results.multi_hand_landmarks:
-            for handType, handLms in zip(self.results.multi_handedness, self.results.multi_hand_landmarks):
-                myHand = {}
-                mylmList = []
-                xList = []
-                yList = []
-                for id, lm in enumerate(handLms.landmark):
-                    px, py, pz = int(lm.x * w), int(lm.y * h), int(lm.z * w)
-                    mylmList.append([px, py, pz])
-                    xList.append(px)
-                    yList.append(py)
-
-                xmin, xmax = min(xList), max(xList)
-                ymin, ymax = min(yList), max(yList)
-                boxW, boxH = xmax - xmin, ymax - ymin
-                bbox = xmin, ymin, boxW, boxH
-                cx, cy = bbox[0] + (bbox[2] // 2), bbox[1] + (bbox[3] // 2)
-
-                myHand["lmList"] = mylmList
-                myHand["bbox"] = bbox
-                myHand["center"] = (cx, cy)
-
-                if flipType:
-                    if handType.classification[0].label == "Right":
-                        myHand["type"] = "Left"
-                    else:
-                        myHand["type"] = "Right"
-                else:
-                    myHand["type"] = handType.classification[0].label
-                allHands.append(myHand)
-
-                if draw:
-                    self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
-                    cv2.rectangle(img, (bbox[0] - 20, bbox[1] - 20),
-                                  (bbox[0] + bbox[2] + 20, bbox[1] + bbox[3] + 20),
-                                  (255, 0, 255), 2)
-                    cv2.putText(img, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN,
-                                2, (255, 0, 255), 2)
-
-        return allHands, img
-
-    def fingersUp(self, myHand):
-        fingers = []
-        myHandType = myHand["type"]
-        myLmList = myHand["lmList"]
-        if self.results.multi_hand_landmarks:
-            if myHandType == "Right":
-                if myLmList[self.tipIds[0]][0] > myLmList[self.tipIds[0] - 1][0]:
-                    fingers.append(1)
-                else:
-                    fingers.append(0)
-            else:
-                if myLmList[self.tipIds[0]][0] < myLmList[self.tipIds[0] - 1][0]:
-                    fingers.append(1)
-                else:
-                    fingers.append(0)
-
-            for id in range(1, 5):
-                if myLmList[self.tipIds[id]][1] < myLmList[self.tipIds[id] - 2][1]:
-                    fingers.append(1)
-                else:
-                    fingers.append(0)
-        return fingers
-
-    def findDistance(self, p1, p2, img=None, color=(255, 0, 255), scale=5):
-        x1, y1 = p1
-        x2, y2 = p2
-        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-        length = math.hypot(x2 - x1, y2 - y1)
-        info = (x1, y1, x2, y2, cx, cy)
-        if img is not None:
-            cv2.circle(img, (x1, y1), scale, color, cv2.FILLED)
-            cv2.circle(img, (x2, y2), scale, color, cv2.FILLED)
-            cv2.line(img, (x1, y1), (x2, y2), color, max(1, scale // 3))
-            cv2.circle(img, (cx, cy), scale, color, cv2.FILLED)
-
-        return length, info, img
-
+import time
 
 def main():
     cap = cv2.VideoCapture(0)
@@ -119,61 +14,148 @@ def main():
     imgBall = cv2.imread("Resources/Ball.png", cv2.IMREAD_UNCHANGED)
     imgBoard = cv2.imread("Resources/board.png", cv2.IMREAD_UNCHANGED)
     imgBox = cv2.imread("Resources/Box.png", cv2.IMREAD_UNCHANGED)
+    imgItem = cv2.imread("Resources/x2.png", cv2.IMREAD_UNCHANGED)
 
-    x_box = random.randint(400, 1185)
-    y_box = random.randint(0, 410)
+    def generate_new_box_position():
+        new_x = random.randint(400, 1185)
+        new_y = random.randint(0, 410)
+        return new_x, new_y
+
+    def generate_new_item_position():
+        new_x = random.randint(400, 1185)
+        new_y = random.randint(0, 410)
+        return new_x, new_y
+
+    x_box, y_box = generate_new_box_position()
+    x_item, y_item = generate_new_item_position()
 
     detector = HandDetector(detectionCon=0.8, maxHands=1)
 
     ballPos = [100, 100]
-    speedX = 15
-    speedY = 15
+    base_speed = 15
+    speed = base_speed
+    direction = np.array([1, 1])
+    direction = direction / np.linalg.norm(direction) * speed
     score = 0
+    last_box_time = time.time()
+    last_speed_increase_time = time.time()
+    item_spawn_time = time.time()
+    item_lifespan = 10
+    item_effect_end_time = None
+    box_visible = True
+    item_visible = False
+    score_multiplier = 1
+
+    def maintain_speed(direction, speed):
+        norm = np.linalg.norm(direction)
+        if norm == 0:
+            return direction
+        return (direction / norm) * speed
 
     while True:
         _, img = cap.read()
         img = cv2.flip(img, 1)
 
         hands, img = detector.findHands(img, flipType=False)
-        h1, w1, _ = imgBoard.shape
-
         img = cv2.addWeighted(img, 0.05, imgBackground, 0.95, 0)
+        img = cvzone.overlayPNG(img, imgBall, tuple(map(int, ballPos)))
+
+        current_time = time.time()
+        if current_time - last_box_time > 0.5:
+            box_visible = True
+            img = cvzone.overlayPNG(img, imgBox, (x_box, y_box))
+        else:
+            box_visible = False
+
+        if current_time - item_spawn_time > 30:
+            item_visible = True
+            x_item, y_item = generate_new_item_position()
+            item_spawn_time = current_time
+
+        if item_visible and current_time - item_spawn_time > item_lifespan:
+            item_visible = False
+
+        if item_visible:
+            img = cvzone.overlayPNG(img, imgItem, (x_item, y_item))
+
+        if current_time - last_speed_increase_time >= 1:
+            speed += 0.05
+            direction = maintain_speed(direction, speed)
+            last_speed_increase_time = current_time
 
         if hands:
             for hand in hands:
                 x, y, w, h = hand['bbox']
-                h1, w1, _ = imgBoard.shape
-                y1 = y - h1 // 2
-                y1 = np.clip(y1, 10, 405)
+                h_board, w_board, _ = imgBoard.shape
+                y_board = y - h_board // 2
+                y_board = np.clip(y_board, 10, 405)
+
+                board_rect = [20, y_board, w_board, h_board]
+
+                ball_rect = [ballPos[0], ballPos[1], imgBall.shape[1], imgBall.shape[0]]
+
+                if (ball_rect[1] < board_rect[1] + board_rect[3] and ball_rect[1] + ball_rect[3] > board_rect[1]):
+                    if ball_rect[0] < board_rect[0] + board_rect[2] and ball_rect[0] + ball_rect[2] > board_rect[0]:
+                        hit_position = (ball_rect[1] + ball_rect[3] / 2) - board_rect[1]
+                        normalized_hit_position = (hit_position / board_rect[3]) - 0.5
+                        direction[1] = direction[1] + normalized_hit_position * 2
+                        direction[0] = -direction[0]
+                        direction = maintain_speed(direction, speed)
+
                 if (hand['type'] == "Left") or (hand['type'] == "Right"):
-                    cvzone.overlayPNG(img, imgBoard, (20, y1))
-                    if 20 < ballPos[0] < 25 + w1 and y1 < ballPos[1] < y1 + h1:
-                        speedX = -speedX
-                        ballPos[0] += 5
+                    img = cvzone.overlayPNG(img, imgBoard, (20, y_board))
 
         if ballPos[1] >= 470 or ballPos[1] <= 0:
-            speedY = -speedY
+            direction[1] = -direction[1]
+            direction = maintain_speed(direction, speed)
         if ballPos[0] >= 1242 or ballPos[0] <= 20:
-            speedX = -speedX
+            direction[0] = -direction[0]
+            direction = maintain_speed(direction, speed)
 
         ball_rect = [ballPos[0], ballPos[1], imgBall.shape[1], imgBall.shape[0]]
-        box_rect = [x_box, y_box, imgBox.shape[1], imgBox.shape[0]]
 
-        if (ball_rect[1] < box_rect[1] + box_rect[3] and
-            ball_rect[1] + ball_rect[3] > box_rect[1]):
-            if ball_rect[0] < box_rect[0] + box_rect[2] and ball_rect[0] + ball_rect[2] > box_rect[0]:
-                if ball_rect[1] + ball_rect[3] - speedY < box_rect[1] or ball_rect[1] - speedY > box_rect[1] + box_rect[3]:
-                    speedY = -speedY
-                if ball_rect[0] + ball_rect[2] - speedX < box_rect[0] or ball_rect[0] - speedX > box_rect[0] + box_rect[2]:
-                    speedX = -speedX
-                score += 1
-                print(score)
+        if box_visible:
+            box_rect = [x_box, y_box, imgBox.shape[1], imgBox.shape[0]]
+            if (ball_rect[1] < box_rect[1] + box_rect[3] and ball_rect[1] + ball_rect[3] > box_rect[1]):
+                if ball_rect[0] < box_rect[0] + box_rect[2] and ball_rect[0] + ball_rect[2] > box_rect[0]:
+                    if ball_rect[1] + ball_rect[3] - direction[1] < box_rect[1] or ball_rect[1] - direction[1] > box_rect[1] + box_rect[3]:
+                        direction[1] = -direction[1]
+                    if ball_rect[0] + ball_rect[2] - direction[0] < box_rect[0] or ball_rect[0] - direction[0] > box_rect[0] + box_rect[2]:
+                        direction[0] = -direction[0]
+                    score += 1 * score_multiplier
+                    print(score)
+                    last_box_time = time.time()
+                    x_box, y_box = generate_new_box_position()
+                    direction = maintain_speed(direction, speed)
 
-        ballPos[0] += speedX
-        ballPos[1] += speedY
+        if item_visible:
+            item_rect = [x_item, y_item, imgItem.shape[1], imgItem.shape[0]]
+            if (ball_rect[1] < item_rect[1] + item_rect[3] and ball_rect[1] + ball_rect[3] > item_rect[1]):
+                if ball_rect[0] < item_rect[0] + item_rect[2] and ball_rect[0] + ball_rect[2] > item_rect[0]:
+                    item_visible = False
+                    item_effect_end_time = current_time + 20
+                    score_multiplier = 2
+                    print("Item Collected! Score is doubled for 20 seconds.")
 
-        cvzone.overlayPNG(img, imgBall, ballPos)
-        cvzone.overlayPNG(img, imgBox, (x_box, y_box))
+        if item_effect_end_time and current_time > item_effect_end_time:
+            score_multiplier = 1
+            item_effect_end_time = None
+            print("Item effect ended. Score multiplier restored.")
+
+        if item_effect_end_time and current_time <= item_effect_end_time:
+            cv2.putText(img, "Double Score Active!", (500, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
+
+        ballPos[0] += direction[0]
+        ballPos[1] += direction[1]
+        
+        if 0 <= score <=9:
+            cv2.putText(img, str(score) , (610, 690), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 0), 5)
+        elif 10 <= score <= 99:  
+            cv2.putText(img, str(score) , (580, 690), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 0), 5)
+        elif score >= 100:
+            cv2.putText(img, str(score) , (545, 690), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 0), 5)
+        
+        
 
         cv2.imshow("Image", img)
         cv2.waitKey(1)
@@ -187,5 +169,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    
